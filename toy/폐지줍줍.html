@@ -1,0 +1,54 @@
+아래에 폐지를 붙여넣고 줍기 클릭<br/>
+<textarea name="textarea_name" rows=20 cols=100 onchange="on_change('textarea')" alt="sdsdsd"></textarea><p/>
+
+<button type="input" onclick="on_click1()">분석</button>
+<button type="input" onclick="on_click2()">줍기</button>
+<a href="https://order.pay.naver.com/home?tabMenu=POINT_TOTAL"> 줍기결과</a>
+<div name="preview">preview</div>
+
+<script>
+console.log( "폐지줍줍");
+let data = []
+
+function on_change(cwhat) {
+	console.log( "on_change = " + cwhat);
+}
+
+function on_click1(){
+	console.log( "focus");
+	let content = document.getElementsByName("textarea_name")[0].value
+	//console.log(content)
+	content = content.replace(" ", "\n")
+	content = content.replace("\n\n", "\n")
+
+	let ele = content.split("\n")
+	document.getElementsByName("preview")[0].innerHTML = ""
+	let result =""
+
+	data = []
+
+	for (const iterator of ele) {
+		if (iterator == "")
+			continue
+
+		let url = iterator.trim()
+		if (url.substring(0, 4) =="http") {
+			data.push(url)
+			result += "<a href=\"" + url +"\" >" + url +"</a><br/>"
+		}
+	}
+
+	console.log(result);
+	document.getElementsByName("preview")[0].innerHTML = "count=" + data.length + "<br/>" + result
+}
+function on_click2(){
+	if (data.length < 1) {
+		alert("분석하고 줍기")
+		return
+	}
+
+	for (const iterator of data) {
+		window.open(iterator,  '_blank');
+	}
+}
+</script>
