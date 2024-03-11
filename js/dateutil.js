@@ -1,3 +1,4 @@
+console.log('https://raw.githubusercontent.com/bulker/bulkerGitHubMain/master/js/dateutil.js')
 // 날짜를 YYYY-MM-DD 형식으로 포맷하는 함수
 function formatDate(date) {
     const year = date.getFullYear();
