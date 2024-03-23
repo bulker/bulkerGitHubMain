@@ -1,3 +1,5 @@
+//browserenv.js
+
 //브라우저 환경정보
 
 function PrintBrowserEnv() {
@@ -12,4 +14,15 @@ function PrintBrowserEnv() {
    
     //https://developer.mozilla.org/ko/docs/Web/API/Document/URL
     //https://developer.mozilla.org/ko/docs/Web/API/Location    
+}
+
+function PrintDocumentCount() {
+    let docCount = 0;
+    for (const frame of window.frames) {
+      if (frame.document) {
+        docCount++;
+      }
+    }
+    console.log(docCount); // 2 (예시)
+    console.log(document.querySelectorAll("iframe").length); // 2 (예시)
 }
