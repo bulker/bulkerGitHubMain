@@ -20,6 +20,7 @@ function PrintDocumentCount() {
     let docCount = 0;
     for (const frame of window.frames) {
       if (frame.document) {
+        console.log(frame.document.URL)
         docCount++;
       }
     }
