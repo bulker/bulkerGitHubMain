@@ -1,0 +1,953 @@
+// ==UserScript==
+// @name         지마켓구매내역
+// @namespace    http://tampermonkey.net/
+// @version      2024-01-06
+// @description  try to take over the world!
+// @author       balkuracks
+// @match        https://my.gmarket.co.kr/*
+// @icon         https://www.google.com/s2/favicons?sz=64&domain=gmarket.co.kr
+// @grant        GM_registerMenuCommand
+// @grant        GM_xmlhttpRequest
+// @require      https://raw.githubusercontent.com/bulker/bulkerGitHubMain/master/js/browserenv.js
+// @require      https://raw.githubusercontent.com/bulker/bulkerGitHubMain/master/js/dateutil.js
+// @run-at     document-idle
+// ==/UserScript==
+
+/*
+지마켓구매내역	https://myg.gmarket.co.kr/ContractList/GeneralContractListAjax
+POST	searchSDT=2023-11-01&searchEDT=2023-11-30&searchFilter=&searchStatus=&page=1&pageSize=5&cacheYN=Y
+*/
+//console.log('지마켓구매내역')
+
+//https://github.dev/bulker/bulkerGitHubMain
+
+function PrintDocumentCount() {
+    console.log('window.frames.length', window.frames.length)
+    console.log('document.querySelectorAll("iframe").length', document.querySelectorAll("iframe").length); // 2 (예시)
+
+    return
+
+    let docCount = 0;
+    for (const frame of window.frames) {
+        if (frame.document) {
+            console.log(frame.document.URL)
+            docCount++;
+        }
+    }
+    console.log(docCount); // 2 (예시)
+}
+
+(function() {
+    PrintBrowserEnv();
+    PrintDocumentCount();
+    console.log('document.URL', document.URL)
+    console.log(GM_info.script.name, "발쿠몽키-" + GM_info.script.name + ", version:" + GM_info.script.version)
+
+
+    if (document.URL === 'https://my.gmarket.co.kr/Home/Blank') {
+        console.log('내역페이지아님: ' + document.URL)
+        return
+    }
+
+    // 페이지 로드 후 메뉴 추가
+    window.addEventListener('load', createbutton);
+
+    let sheet_format = {일자:'yyy-mm-dd',분류:'',	품명:'',	링크:'',	단가:0,	할인:0,	배송:0,	최종구입가:0, 달러화:0,	비고:''}
+
+    // Tampermonkey 메뉴
+    GM_registerMenuCommand('내역추출', ()=>{run()});
+
+    function createbutton() {
+        const date = new Date();
+        const lastmonth = new Date(date.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+        const inputFrom = document.createElement('input');
+        inputFrom.id="bulk_inputFrom"
+        inputFrom.value = formatDate(lastmonth)
+        const inputTo = document.createElement('input');
+        inputTo.id="bulk_inputTo"
+        inputTo.value = formatDate(new Date())
+        const button = document.createElement('button'); // 버튼을 생성합니다.
+        button.textContent = '[발쿠몽키]'; // 버튼 텍스트 설정
+
+        // 버튼 스타일을 추가합니다.
+        //button.style.position = 'fixed'; // 화면 고정 위치
+        //button.style.top = '0px'; // 상단 여백 설정
+        //button.style.left = '200px'; // 왼쪽 여백 설정
+        button.style.backgroundColor = 'red'; // 배경색 설정
+        //button.style.color = 'white'; // 텍스트 색상 설정
+        button.style.border = '1px solid black'; // 테두리 없애기
+        button.style.padding = '5px'; // 내부 여백 설정
+
+        // 버튼을 body에 추가합니다.
+
+        //document.body.appendChild(button);
+        //document.getElementsByTagName('nav')[0].getElementsByTagName('ul')[0].appendChild(button);
+        //document.head.appendChild(button);
+        //document.getElementById('btnSearch').appendChild(button);
+        // 버튼 클릭 시 동작을 추가할 수 있습니다.
+        button.addEventListener('click', function() { run() });
+
+        const span = document.createElement('span')
+        span.appendChild(button)
+        span.appendChild(inputFrom)
+        span.appendChild(inputTo)
+        span.style.border = '1px solid black'; // 테두리 없애기
+        //console.log('span',span)
+        //화면 어태치
+        const parent = document.getElementsByClassName('text__header-title')[0]
+        if (parent) {
+            parent.appendChild(span);}
+    }
+
+    function run(){
+
+        let startDT = new Date(document.getElementById('bulk_inputFrom').value)
+        let endDT = new Date(document.getElementById('bulk_inputTo').value)
+
+        // 결과를 담을 배열 초기화
+        const result = [];
+        const URL_ITEM = "http://item.gmarket.co.kr/detailview/item.asp?goodscode="
+        while (endDT >= startDT) {
+            const firstDay = new Date(endDT.getFullYear(), endDT.getMonth(), 1);
+            const lastDay = new Date(endDT.getFullYear(), endDT.getMonth() + 1, 0); //마지막날?
+            console.log(formatDate(firstDay)+ ',' + formatDate(lastDay));
+            let monthResult = getMonthData(formatDate(firstDay), formatDate(lastDay))
+            monthResult.forEach((elem)=>{
+                const parsed23 = parse_gmarketSecondThird(elem.FirstColumn, elem.SecondColumn, elem.ThirdColumn) //세컨드/서드 파싱
+
+                let _elem = {}
+
+                if (0) {
+                    _elem = elem //몽창 복사
+                }else{ //필요한것만 복사
+                    //_elem.FirstColumn = elem.FirstColumn
+                    //_elem.SecondColumn = elem.SecondColumn
+                    //_elem.ThirdColumn = elem.ThirdColumn
+                    //_elem.FourthColumn = elem.FourthColumn
+                }
+                _elem.orderDate = parsed23.orderDate
+                _elem.gubun = '' //분류 비워두기
+                _elem.title = '<a href="' + parsed23.image + '">' + parsed23.title + ' ' + parsed23.quantity + '</a>'
+                _elem.link = parsed23.itemcode
+                _elem.price = parsed23.price + parsed23.discount
+                _elem.discount = parsed23.discount
+                _elem.배송 = ''
+                _elem.최종구입가 = ''
+                _elem.status = parsed23.status
+                _elem.seller = parsed23.seller
+                _elem.sep1 = ''
+                _elem.sep21 = ''
+                //_elem.image = '<img src="' + parsed23.image + '">'
+                //_elem.title = parsed23.title
+                //_elem.quantity = parsed23.quantity
+                //_elem.orderNumber = parsed23.orderNumber
+                //_elem.itemcode = parsed23.itemcode
+                _elem.track = parsed23.track
+
+                result.push(_elem)
+            })
+            endDT.setMonth(endDT.getMonth() - 1);
+        }
+
+        if (result.length > 0)
+            processResult(result)
+        else
+            alert('결과없음')
+    }
+
+    function processResult(jsonData) {
+        console.log(jsonData)
+        let dataArray = jsonData//.data
+        let result = {total: 10, page: 1, data: [], success: true, message: 'Loaded data'}
+        let result_data = {
+            "IsPast": false,
+            "rowSpan": 3,
+            "RefDate": "\/Date(1700924400000)\/",
+            "RefNo": "4058149253",
+            "Status": "DeliveryCmpl",
+            "OriginStatusCode": null,
+            "CartNo": 5219092367,
+            "ContractNo": 4058149253,
+            "ItemNo": null,
+            "LClassCode": null,
+            "MClassCode": null,
+            "SClassCode": null,
+            "ReservationNo": null,
+            "FirstColumn": "\u003cdiv class=\"td_detail\"\u003e2023-11-19\u003cspan class=\"btn_bg btn_w81_2\"\u003e\t\u003ca href=\"javascript:fnContractDetail(\u00275219092367\u0027)\" id=\"btn_order_detail_5219092367\"\u003e주문상세보기\u003c/a\u003e\u003c/span\u003e\u003cspan class=\"btn_bg btn_w81_4\"\u003e\u003ca href=\"javascript:fnContractDelete(\u00275219092367\u0027, \u00274058149253\u0027, \u0027DeliveryCmpl\u0027)\"\u003e주문내역삭제\u003c/a\u003e\u003c/span\u003e\u003c/div\u003e",
+            "SecondColumn": "\u003cdiv class=\u0027td_info\u0027\u003e\u003cp\u003e\u003ca href=\"javascript:fnGoVipPage(\u00272497542033\u0027)\"\u003e\u003cimg src=\"//gdimg.gmarket.co.kr/goods_image2/small_jpgimg/249/754/2497542033.jpg\" class=\"thumb\" onError=\"ImgLoadFirst(this);\" alt=\"\"\u003e\u003c/a\u003e\u003c/p\u003e\u003cul\u003e\u003cli class=\u0027seller_info\u0027\u003e\u003cem\u003e\u003c/em\u003e\u003ca href=\"javascript:fnSellerInfoPopup(\u0027~dHhJjFKRV7kqDhjiBgL+yr3xnzrfoUvuO2EBo3SogdIoqA4rcnZTJxTH0wRDsH8Ufn1Y/WICvCdOqYCOA0DRK2Zwig4gysnxaZAOBRiIbuw=\u0027, false);\"\u003e아빠식당\u003c/a\u003e\u003cspan class=\u0027btn_sgray\u0027\u003e\u003ca href=\"javascript:fnSellerInquiryPopup(\u0027TQ3NR38DMTkxOQy0ODI5MjA5NDl/Rw==\u0027, \u00272497542033\u0027, \u00274058149253\u0027);\"\u003e문의하기\u003c/a\u003e\u003c/span\u003e\u003c/li\u003e\u003cli class=\u0027tit_info\u0027\u003e\u003ca href=\"javascript:fnGoVipPage(\u00272497542033\u0027)\"\u003e어육80% 밀가루없는 매운 어묵탕 230g 3팩+어묵탕230g 2팩(+우동면/간장와사비)\u003c/a\u003e\u003c/li\u003e\u003cli class=\"cart\"\u003e수량 : 1개 / 주문번호 : 4058149253\u003c/li\u003e\u003cli class=\u0027price\u0027\u003e\u003cstrong\u003e14,450\u003c/strong\u003e원\u003cspan\u003e(2,550원 할인)\u003c/span\u003e\u003c/li\u003e\u003c/ul\u003e\u003c/div\u003e",
+            "ThirdColumn": "\u003cdiv class=\"td_status\"\u003e\u003cspan class=\"btn_bg2 btn_status_b1\"\u003e배송완료\u003c/span\u003e\u003cul\u003e\u003cli\u003e\u003cspan class=\"btn_bg2 btn_small_sta2\"\u003e\u003ca href=\"javascript:fnTracePopupNew2(\u0027https%3a%2f%2ftracking.gmarket.co.kr%2ftrack%2f4058149253%3ftrackingType%3dDELIVERY\u0026charset=ko\u0027)\" \u003e배송추적\u003c/a\u003e\u003c/span\u003e\u003c/li\u003e\u003c/ul\u003e\u003c/div\u003e",
+            "FourthColumn": "",
+            "DangolRow": "",
+            "InquiryRow": "",
+            "SmileBoxRow": "",
+            "CallBackApplicationNumber": 0,
+            "TotalCnt": 10,
+            "IsSmilefreshDawn": false,
+            "IsExposedRbbagLocationNotice": false
+        }
+        let tableHtml = '<table id="jsonTable" class="table-auto border" ><thead class="table-auto border"><tr>';
+
+        // 테이블 헤더 생성 - JSON 데이터의 키를 가져와서 테이블 헤더로 사용
+        //tableHtml += `<th  class="table-auto border">No</th>`;//순번
+        for (const key in dataArray[0]) {
+            tableHtml += `<th  class="table-auto border">${key}</th>`;
+        }
+        tableHtml += '</tr></thead><tbody>';
+
+        // 테이블 데이터 생성
+        let count=0
+
+        dataArray.forEach(item => {
+            tableHtml += '<tr>';
+            //tableHtml += `<td  class="table-auto border">${++count}</td>`;
+            for (const key in item) {
+                //if (key === 'FirstColumn') {
+                //    let t = document.createElement('div')
+                //    t.innerHTML = item[key]
+                //    while(t.firstChild) {t.removeChild(t.firstChild) }
+                //    item[key] = t.innerText
+                //}
+
+                tableHtml += `<td  class="table-auto border">${item[key]}</td>`;
+
+            }
+            tableHtml += '</tr>';
+        });
+
+        tableHtml += '</tbody></table>';
+
+        // 결과를 새 창에 표시
+        const newWindow = window.open('', '_blank', 'width=1280,height=1024,scrollbars=yes');
+        if (newWindow) {
+            newWindow.document.write('<html><head><title>결과</title>');
+            newWindow.document.write('<script src="https://cdn.tailwindcss.com"></script>');
+            newWindow.document.write('</head><body>');
+
+            newWindow.document.write(`<p>${tableHtml}</p>`);
+            newWindow.document.write('</body></html>');
+            newWindow.document.close();
+        } else {
+            console.error('팝업 창이 차단되었습니다.');
+        }
+
+        window.addEventListener('locationchange', function(e) {
+            console.log('locationchange')
+        });
+
+    }
+
+    function getJsonObject(url) {
+        // 폼 데이터 생성 searchSDT=2023-11-01&searchEDT=2023-11-30&searchFilter=&searchStatus=&page=1&pageSize=5&cacheYN=Y
+        const formData = new FormData();
+        formData.append('searchSDT', '2023-11-01');
+        formData.append('searchEDT', '2023-11-30');
+        formData.append('searchFilter', '');
+        formData.append('searchStatus', '');
+        formData.append('page', '1');
+        formData.append('pageSize', '5');
+        formData.append('cacheYN', 'Y');
+
+        // XMLHttpRequest 객체 생성
+        const xhr = new XMLHttpRequest();
+
+        // POST 요청 설정
+        xhr.open('POST', url, false);
+        // POST 요청 전송
+        xhr.send(formData);
+        // xhr.send('searchSDT=2023-11-01&searchEDT=2023-11-30&searchFilter=&searchStatus=&page=1&pageSize=5&cacheYN=Y')
+        // 응답 처리
+        //        xhr.onload = function() {  //비동기
+        if (xhr.status === 200) {
+            // 요청이 성공한 경우 응답 처리
+            //console.log('응답 받은 데이터:', xhr.responseText);
+            processResult(JSON.parse(xhr.responseText))
+        } else {
+            // 요청이 실패한 경우 처리
+            console.error('요청 실패:', xhr.status);
+        }
+        //        };
+
+    }
+
+    function getMonthData(strStart, strEnd) {
+        //const url = 'https://myg.gmarket.co.kr/ContractList/GeneralContractListAjax'
+        //const url = 'https://my.gmarket.co.kr/api/pays/paging?pageNo=1&pageSize=10&searchKindEnum=All&searchStartDate=2024-01-29T00%3A00%3A00.000Z&searchEndDate=2025-01-31T00%3A00%3A00.000Z&searchWord='
+        const url = 'https://my.gmarket.co.kr/api/pays/paging?searchStartDate='+strStart+'&'+'searchEndDate='+strEnd
+        //한달, 페이지당 10개씩 밖에 응답을 안함
+        // 폼 데이터 생성 searchSDT=2023-11-01&searchEDT=2023-11-30&searchFilter=&searchStatus=&page=1&pageSize=5&cacheYN=Y
+        let page = 0
+        let pageSize = 5 //5개 초과하면 누락나옴
+        let total = -1
+        let res = []
+
+        while (total === -1 || pageSize*page < total) {
+
+            const formData = new FormData();
+            formData.append('searchStartDate', strStart);
+            formData.append('searchEndDate', strEnd);
+            //formData.append('searchFilter', '');
+            //formData.append('searchStatus', '');
+            formData.append('page', ++page);
+            formData.append('pageSize', pageSize);
+            //formData.append('cacheYN', 'Y');
+            console.debug('formData',formData)
+            let genurl = url
+            genurl += '&pageNo=' + page
+            genurl += '&pageSize=' + pageSize
+            const xhr = new XMLHttpRequest(); // XMLHttpRequest 객체 생성
+            xhr.open('GET', genurl, false); // POST 요청 설정
+            // POST 요청 전송
+            xhr.send(formData);
+            // xhr.send('searchSDT=2023-11-01&searchEDT=2023-11-30&searchFilter=&searchStatus=&page=1&pageSize=5&cacheYN=Y')
+            // 응답 처리
+            //        xhr.onload = function() {  //비동기
+            if (xhr.status === 200) {
+                // 요청이 성공한 경우 응답 처리
+                //console.log('응답 받은 데이터:', xhr.responseText);
+                let ret = JSON.parse(xhr.responseText)
+                console.log(ret)
+                if (ret.totalCount === 0) break; //구매내역 없는달
+
+                ret.data.payBundleList.forEach((elem)=>{res.push(elem)})
+                total = ret.totalCount
+            } else {
+                // 요청이 실패한 경우 처리
+                console.error('요청 실패:', xhr.status);
+                total = 0
+            }
+        };
+        return res
+    }
+
+    /*
+ ██████╗     ███╗   ███╗ █████╗ ██████╗ ██╗  ██╗███████╗████████╗
+██╔════╝     ████╗ ████║██╔══██╗██╔══██╗██║ ██╔╝██╔════╝╚══██╔══╝
+██║  ███╗    ██╔████╔██║███████║██████╔╝█████╔╝ █████╗     ██║
+██║   ██║    ██║╚██╔╝██║██╔══██║██╔══██╗██╔═██╗ ██╔══╝     ██║
+╚██████╔╝    ██║ ╚═╝ ██║██║  ██║██║  ██║██║  ██╗███████╗   ██║
+ ╚═════╝     ╚═╝     ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝   ╚═╝
+*/
+    function getGmarketOrdered(){
+        //지마켓 구매내역  html 문자열로 리턴.
+        try {
+            var result ="<table>";
+            document.getElementById('orderList').getElementsByTagName('tr').length
+            var order_list_table = document.getElementById('orderList');
+            var trs = document.getElementById('orderList').getElementsByTagName('tr');
+            var seq = 0;
+            var dt =""; //동일주문에 여러건인 경우 날짜는 하나만 있어서 유지해야함.
+            for (var i = 0; i < trs.length; ++i ) {
+                if (trs[i].getElementsByClassName('no_data')[0] != undefined) continue;
+
+                if (trs[i].getElementsByClassName('td_detail').length > 0){
+                    dt = trs[i].getElementsByClassName('td_detail')[0].innerText.substring(0,10);}
+
+                let pName = trs[i].getElementsByClassName('td_info')[0].getElementsByClassName('tit_info')[0].innerText;
+                let pOpt = "";
+                if (trs[i].getElementsByClassName('td_info')[0].getElementsByClassName('optTxt').length > 0){
+                    pOpt = trs[i].getElementsByClassName('td_info')[0].getElementsByClassName('optTxt')[0].innerText;}
+                let price = trs[i].getElementsByClassName('td_info')[0].getElementsByClassName('price')[0].getElementsByTagName('strong')[0].innerText;
+
+                let img = trs[i].getElementsByClassName('td_info')[0].getElementsByTagName('img')[0].src;
+                let link = URL_ITEM + trs[i].getElementsByClassName('tit_info')[0].getElementsByTagName('a')[0].href;
+                link = link.replace("javascript:fnGoVipPage('","");
+                link = link.replace("')","");
+                let ordno = trs[i].getElementsByClassName('cart')[0].innerText;
+                let status_msg = trs[i].getElementsByClassName('td_status')[0].getElementsByTagName("span")[0].innerText;
+                //일자	분류	품명	링크	단가	할인	배송	최종구입가 상태메시지
+                let s = "<tr>";
+                s += "<td>" + dt + "</td>";   //날짜
+                s += "<td></td>";             //분류
+                s += "<td><a href='"+ img + "'>" +pName +"</a><br>" + pOpt + "</td>"; //품명
+                s += "<td><a href='" + link + "'><img src='" +img + "' width='50px' height='50px'>지마켓</a></td>";
+                s += "<td>" +price + "</td>";
+                s += "<td></td>";
+                s += "<td></td>";
+                s += "<td></td>";
+
+                s += "<td>" +status_msg + "</td>";
+                //    s += "<td>" +link + "</td>";
+                s += "<td>" + (++seq) + "</td>";
+                console.log(i +":" + s);
+                result += s+"</tr>";
+            }
+            result += "</table>";
+            return "지마켓 구매내역  -- 여기부터 긁어서 복사<br>" + result;
+
+        } catch (e) {
+            return "예외발생 !! <br>" +
+                "message : "+ e.message +"<br>" +
+                "number : "+e.number +"<br>" +
+                "name : "+e.name +"<br>" +
+                "fileName : "+e.fileName +"<br>" +
+                "lineNumber  : "+e.lineNumber +"<br>" +
+                "description : "+e.description +"<br>" +
+                "call stack : "+new Error().stack +"<br>";
+
+        }
+
+    }
+
+
+    function parse_gmarketSecond(SecondColumn) {
+        // 주어진 HTML 문자열
+        //const SecondColumn = str
+
+        // HTML 문자열을 파싱하기 위해 가상의 div 요소를 만듭니다.
+        const div = document.createElement('div');
+        div.innerHTML = SecondColumn;
+
+        // div 요소 안의 내용을 추출합니다.
+        const aTag = div.querySelector('a');
+        const imgTag = div.querySelector('img');
+        const sellerInfoTag = div.querySelector('.seller_info a');
+        const titleInfoTag = div.querySelector('.tit_info a');
+        const cartInfoTag = div.querySelector('.cart');
+        const priceTag = div.querySelector('.price strong');
+
+        // 추출된 내용을 JSON 형식으로 변환합니다.
+        const parsedData = {
+            "image_src": imgTag ? imgTag.getAttribute('src') : null,
+            "seller_info": sellerInfoTag ? sellerInfoTag.textContent : null,
+            "title_info": titleInfoTag ? titleInfoTag.textContent : null,
+            "cart_info": cartInfoTag ? cartInfoTag.textContent : null,
+            "price": priceTag ? parseInt(priceTag.textContent) : null
+        };
+
+        // JSON을 출력합니다.
+        console.log(parsedData);
+        return parsedData;
+    }
+
+    function parse_gmarketSecond_type2(SecondColumn) {
+        //let SecondColumn = str
+        // HTML 파싱
+        const parsedHtml = document.createElement("div");
+        parsedHtml.innerHTML = SecondColumn;
+
+        // id가 testnode인 div에 붙이기
+        const testNode = document.getElementById("result");
+        testNode.appendChild(parsedHtml);
+
+        // JSON 객체 생성
+        const jsonData = {};
+
+        // 상품 이미지
+        const imgElement = parsedHtml.querySelector('img.thumb');
+        jsonData.image = imgElement.src;
+
+        // 판매자 정보
+        const sellerElement = parsedHtml.querySelector('li.seller_info a');
+        jsonData.seller = sellerElement.textContent;
+
+        // 상품 제목
+        const titleElement = parsedHtml.querySelector('li.tit_info a');
+        jsonData.title = titleElement.textContent;
+
+        // 상품 정보
+        const infoElement = parsedHtml.querySelector('li.cart');
+        const infoText = infoElement.textContent.trim().split('/');
+        jsonData.quantity = infoText[0].split(':')[1].trim();
+        jsonData.orderNumber = infoText[1].split(':')[1].trim();
+
+        // 상품 가격
+        const priceElement = parsedHtml.querySelector('li.price strong');
+        jsonData.price = parseInt(priceElement.textContent.replace(/,/g, ''));
+
+        // 콘솔에 출력
+        console.log(jsonData);
+        return jsonData;
+    }
+
+    function parse_gmarketSecondThird(FirstColumn, SecondColumn, ThirdColumn) {
+
+        // HTML 파싱
+        const parsedFirstColumn = document.createElement('div');
+        parsedFirstColumn.innerHTML = FirstColumn;
+
+        const parsedSecondColumn = document.createElement('div');
+        parsedSecondColumn.innerHTML = SecondColumn;
+
+        const parsedThirdColumn = document.createElement('div');
+        parsedThirdColumn.innerHTML = ThirdColumn;
+
+        // JSON 객체 생성
+        const jsonData = {};
+
+        // 주문일자
+        const orderDateElement = parsedFirstColumn.querySelector('div.td_detail');
+        jsonData.orderDate = orderDateElement.textContent.replace('\t주문상세보기','').replace('주문내역삭제','');
+
+        // 상품 아이디
+        // fnGoVipPage 함수의 인자를 가진 요소 찾기
+        const URL_ITEM = "http://item.gmarket.co.kr/detailview/item.asp?goodscode="
+
+        jsonData.itemcode = '';
+        var linkElements = parsedSecondColumn.querySelectorAll('a[href^="javascript:fnGoVipPage("]');
+        if (linkElements.length > 0) {
+            // 첫 번째 링크 요소에서 인자 추출
+            var hrefAttribute = linkElements[0].getAttribute('href');
+            var pattern = /fnGoVipPage\('([^']+)'\)/;
+            var match = hrefAttribute.match(pattern);
+            if (match && match.length > 1) {
+                jsonData.itemcode = '<a href="' + URL_ITEM + match[1] +'">지마켓</a>'
+            }
+        }
+
+        // 상품 이미지
+        const imgElement = parsedSecondColumn.querySelector('img.thumb');
+        jsonData.image = imgElement.src;
+
+        // 판매자 정보
+        const sellerElement = parsedSecondColumn.querySelector('li.seller_info a');
+        jsonData.seller = sellerElement.textContent;
+
+        // 상품 제목
+        const titleElement = parsedSecondColumn.querySelector('li.tit_info a');
+        jsonData.title = titleElement.textContent;
+        // 상품 옵션
+        const optionElement = parsedSecondColumn.querySelector('span.optTxt');
+        if (optionElement !== null) jsonData.title += " " + optionElement.textContent;
+
+        // 상품 정보
+        const infoElement = parsedSecondColumn.querySelector('li.cart');
+        const infoText = infoElement.textContent.trim().split('/');
+        jsonData.quantity = infoText[0].split(':')[1].trim();
+        jsonData.orderNumber = infoText[1].split(':')[1].trim();
+
+        // 상품 가격
+        const priceElement = parsedSecondColumn.querySelector('li.price strong');
+        jsonData.price = parseInt(priceElement.textContent.replace(/,/g, ''));
+
+        // 상품 할인
+        const discountElement = parsedSecondColumn.querySelector('li.price span');
+        if (discountElement !== null) {
+            jsonData.discount = parseInt(discountElement.textContent.replace('(','').replace(/,/g, '').replace('원 할인)', ''));
+        } else {
+            jsonData.discount = 0
+        }
+
+        // 배송 상태
+        const statusElement = parsedThirdColumn.querySelector('span');
+        jsonData.status = statusElement.textContent;
+
+        // 배송 추적
+        jsonData.track = ''
+        const track = parsedThirdColumn.querySelector('a');
+        if (track != null) { //javascript:fnTracePopupNew2('https%3a%2f%2ftracking.gmarket.co.kr%2ftrack%2f4115692357%3ftrackingType%3dDELIVERY&charset=ko')
+            jsonData.track = track.href.replace("javascript:fnTracePopupNew2(","")
+            jsonData.track = jsonData.track.replace("'","")
+            jsonData.track = '<a href="' + decodeURIComponent(jsonData.track) + '">배송추적</a>'
+        }
+
+        // 콘솔에 출력
+        console.log(jsonData);
+        return jsonData;
+    }
+
+//코딩 파트너
+//코딩 파트너
+//코딩 파트너
+//코딩 파트너
+//코딩 파트너
+//코딩 파트너
+//코딩 파트너
+//코딩 파트너
+//코딩 파트너
+
+    // UI 스타일 및 요소 추가
+    function addUI() {
+        const style = document.createElement('style');
+        style.innerHTML = `
+            #customControlPanel {
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                z-index: 10000;
+                background-color: #fff;
+                border: 1px solid #ccc;
+                padding: 15px;
+                border-radius: 8px;
+                box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+                font-family: Arial, sans-serif;
+                display: flex;
+                flex-direction: column;
+                gap: 10px;
+            }
+            #customControlPanel h4 { margin: 0 0 10px 0; }
+            #customControlPanel .input-group { display: flex; align-items: center; gap: 5px; }
+            #customControlPanel input[type="month"] { padding: 5px; border: 1px solid #ddd; border-radius: 4px; }
+            #customControlPanel button {
+                padding: 8px 12px;
+                background-color: #007bff;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                cursor: pointer;
+                font-size: 14px;
+                transition: background-color 0.2s;
+            }
+            #customControlPanel button:hover { background-color: #0056b3; }
+
+            #purchaseDataContainer {
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                width: 95%;
+                max-width: 1200px;
+                max-height: 90vh;
+                overflow: auto;
+                background: white;
+                border: 2px solid #333;
+                box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+                z-index: 9999;
+                padding: 20px;
+                font-family: Arial, sans-serif;
+                border-radius: 8px;
+            }
+            #purchaseDataContainer h2 { text-align: center; margin-top: 0; }
+            #purchaseDataTable { width: 100%; border-collapse: collapse; margin-top: 20px; }
+            #purchaseDataTable th, #purchaseDataTable td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+            #purchaseDataTable th { background-color: #f2f2f2; font-weight: bold; }
+            #purchaseDataClose {
+                position: absolute;
+                top: 10px;
+                right: 10px;
+                font-size: 24px;
+                cursor: pointer;
+            }
+            .info-panel {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 10px;
+            }
+            .info-panel button {
+                padding: 5px 10px;
+                background-color: #28a745;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                cursor: pointer;
+            }
+            .info-panel button:hover {
+                background-color: #218838;
+            }
+        `;
+        document.head.appendChild(style);
+
+        const panel = document.createElement('div');
+        panel.id = 'customControlPanel';
+        document.body.appendChild(panel);
+
+        const title = document.createElement('h4');
+        title.innerText = '구매내역 추출 설정';
+        panel.appendChild(title);
+
+        const startGroup = document.createElement('div');
+        startGroup.className = 'input-group';
+        const startLabel = document.createElement('label');
+        startLabel.innerText = '시작:';
+        startLabel.htmlFor = 'startDateInput';
+        const startDateInput = document.createElement('input');
+        startDateInput.id = 'startDateInput';
+        startDateInput.type = 'month';
+        startGroup.appendChild(startLabel);
+        startGroup.appendChild(startDateInput);
+        panel.appendChild(startGroup);
+
+        const endGroup = document.createElement('div');
+        endGroup.className = 'input-group';
+        const endLabel = document.createElement('label');
+        endLabel.innerText = '종료:';
+        endLabel.htmlFor = 'endDateInput';
+        const endDateInput = document.createElement('input');
+        endDateInput.id = 'endDateInput';
+        endDateInput.type = 'month';
+        endGroup.appendChild(endLabel);
+        endGroup.appendChild(endDateInput);
+        panel.appendChild(endGroup);
+
+        const extractButton = document.createElement('button');
+        extractButton.innerText = '구매내역 추출';
+        extractButton.addEventListener('click', fetchAndDisplayData);
+        panel.appendChild(extractButton);
+
+        const now = new Date();
+        const lastYear = now.getFullYear() - 1;
+        startDateInput.value = `${lastYear}-01`;
+        endDateInput.value = `${lastYear}-12`;
+    }
+
+    // 메인 실행 함수
+    async function fetchAndDisplayData() {
+        const startDateInput = document.getElementById('startDateInput');
+        const endDateInput = document.getElementById('endDateInput');
+        const startDate = `${startDateInput.value}-01`;
+        const endDate = `${endDateInput.value}-31`;
+
+        const existingContainer = document.getElementById('purchaseDataContainer');
+        if (existingContainer) {
+            existingContainer.remove();
+        }
+
+        const container = document.createElement('div');
+        container.id = 'purchaseDataContainer';
+        document.body.appendChild(container);
+
+        const closeBtn = document.createElement('span');
+        closeBtn.id = 'purchaseDataClose';
+        closeBtn.innerHTML = '&times;';
+        closeBtn.onclick = () => container.remove();
+        container.appendChild(closeBtn);
+
+        const title = document.createElement('h2');
+        title.innerText = `G마켓 구매 내역 (${startDate} ~ ${endDate})`;
+        container.appendChild(title);
+
+        const loading = document.createElement('p');
+        loading.innerText = '데이터를 불러오는 중입니다...';
+        container.appendChild(loading);
+
+        try {
+            const allItems = await fetchAllPurchaseData(startDate, endDate);
+            loading.remove();
+
+            if (allItems.length > 0) {
+                const infoPanel = document.createElement('div');
+                infoPanel.className = 'info-panel';
+
+                const totalCountText = document.createElement('span');
+                totalCountText.innerText = `총 구매 내역: ${allItems.length}개`;
+                infoPanel.appendChild(totalCountText);
+
+                const buttonGroup = document.createElement('div');
+                const copyButton = document.createElement('button');
+                copyButton.innerText = '테이블 복사';
+                copyButton.onclick = () => copyTableToClipboard();
+                buttonGroup.appendChild(copyButton);
+
+                const openNewTabButton = document.createElement('button');
+                openNewTabButton.innerText = '새 탭으로 열기';
+                openNewTabButton.onclick = () => openTableInNewTab();
+                buttonGroup.appendChild(openNewTabButton);
+
+                infoPanel.appendChild(buttonGroup);
+
+                container.appendChild(infoPanel);
+                createTable(allItems, container);
+            } else {
+                const noData = document.createElement('p');
+                noData.innerText = '구매 내역이 없습니다.';
+                container.appendChild(noData);
+            }
+        } catch (error) {
+            loading.remove();
+            const errorMsg = document.createElement('p');
+            errorMsg.innerText = `데이터를 가져오는 중 오류가 발생했습니다: ${error.message}`;
+            errorMsg.style.color = 'red';
+            container.appendChild(errorMsg);
+            console.error(error);
+        }
+    }
+
+    // 모든 데이터를 가져오는 비동기 함수
+    async function fetchAllPurchaseData(startDate, endDate) {
+        const url = 'https://my.gmarket.co.kr/api/pays/paging';
+        const pageSize = 5;
+        let allItems = [];
+
+        // 1. 첫 페이지를 호출하여 totalCount를 얻습니다.
+        let params = new URLSearchParams({
+            searchStartDate: startDate,
+            searchEndDate: endDate,
+            pageSize: pageSize,
+            pageNo: 1
+        });
+
+        const responseText = await fetchWithTampermonkey(url + '?' + params.toString()); //갯수확인
+        const data = JSON.parse(responseText);
+
+        if (!data || data.code !== 'Success' || !data.data || data.data.payBundleList === undefined) {
+            throw new Error('첫 번째 API 호출에서 유효한 데이터를 받지 못했습니다. 로그인 상태를 확인하거나 API 응답 형식을 점검해주세요.');
+        }
+
+        const totalCount = data.data.totalCount;
+        if (totalCount === 0) {
+            return [];
+        }
+
+        const totalPages = Math.ceil(totalCount / pageSize);
+
+        // 2. 모든 페이지를 for 루프로 호출하고 데이터 가공
+        for (let pageNo = 1; pageNo <= totalPages; pageNo++) {
+            params.set('pageNo', pageNo);
+
+            const pageResponseText = await fetchWithTampermonkey(url + '?' + params.toString());
+            const pageData = JSON.parse(pageResponseText);
+
+            if (pageData && pageData.code === 'Success' && pageData.data && pageData.data.payBundleList) {
+                 if (pageData.data.payBundleList.length === 0) {
+                     console.warn(`페이지 ${pageNo}에 데이터가 없어 루프를 중단합니다.`);
+                     break;
+                 }
+                 pageData.data.payBundleList.forEach(payBundle => {
+                    if (payBundle.orderList && payBundle.orderList.length > 0) {
+                        payBundle.orderList.forEach(order => {
+                            const date = new Date(payBundle.payDate);
+                            const formattedDate = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+
+                            const item = {
+                                날짜: formattedDate,
+                                구분: '',
+                                품명: order.orderItem.itemName + (order.orderItem.itemOptionList && order.orderItem.itemOptionList.length > 0 ? " - " + order.orderItem.itemOptionList : ''),
+                                링크: '',
+                                단가: '',
+                                할인: '',
+                                배송: '',
+                                최종구입가: order.orderPayment.payedAmount,
+                                처리여부: order.displayOrderStatusName,
+                                수량: order.orderQuantity,
+                                금액: order.orderPayment.payedAmount.toLocaleString('ko-KR') + '원',
+                                pageNo: pageNo,
+                                link:'https://item.gmarket.co.kr/Item?goodscode=' + order.orderItem.itemNo,
+                                seller:order.orderItem.seller.sellerName,
+                                sellerLink:order.orderItem.seller.minishop.pcLandingUrl,
+                            };
+                            allItems.push(item);
+                        });
+                    }
+                });
+            } else {
+                console.error(`페이지 ${pageNo} 호출 중 오류 발생:`, pageData);
+                break; // 오류 발생 시 루프 중단
+            }
+
+            // API 요청 간의 지연 시간 추가 (서버 부하 방지)
+            await new Promise(resolve => setTimeout(resolve, 500));
+        }
+
+        return allItems;
+    }
+
+    // GM_xmlhttpRequest를 사용하여 CORS 문제를 우회하는 fetch 함수
+    function fetchWithTampermonkey(url) {
+        console.log(url)
+        return new Promise((resolve, reject) => {
+            GM_xmlhttpRequest({
+                method: "GET",
+                url: url,
+                onload: function(response) {
+                    if (response.status >= 200 && response.status < 300) {
+                        resolve(response.responseText);
+                    } else {
+                        reject(new Error(`Network response was not ok. Status: ${response.status}`));
+                    }
+                },
+                onerror: function(error) {
+                    reject(new Error(`Failed to fetch data: ${error.responseText || error}`));
+                }
+            });
+        });
+    }
+
+    // HTML 테이블 생성 함수
+    function createTable(data, container) {
+        const table = document.createElement('table');
+        table.id = 'purchaseDataTable';
+
+        const thead = table.createTHead();
+        const headerRow = thead.insertRow();
+        const thNo = document.createElement('th');
+        thNo.innerText = '순번';
+        headerRow.appendChild(thNo);
+
+        Object.keys(data[0]).forEach(key => {
+            const th = document.createElement('th');
+            th.innerText = key;
+            headerRow.appendChild(th);
+        });
+
+        const tbody = table.createTBody();
+        data.forEach((item, index) => {
+            const row = tbody.insertRow();
+            const cellNo = row.insertCell();
+            cellNo.innerText = index + 1;
+
+            Object.values(item).forEach(value => {
+                const cell = row.insertCell();
+                cell.innerText = value;
+            });
+        });
+
+        container.appendChild(table);
+    }
+
+    // 테이블 내용을 클립보드로 복사하는 함수
+    function copyTableToClipboard() {
+        const table = document.getElementById('purchaseDataTable');
+        if (!table) {
+            console.error('테이블을 찾을 수 없습니다.');
+            return;
+        }
+
+        const range = document.createRange();
+        range.selectNode(table);
+        window.getSelection().removeAllRanges();
+        window.getSelection().addRange(range);
+
+        try {
+            const successful = document.execCommand('copy');
+            const msg = successful ? '테이블 내용이 복사되었습니다!' : '복사에 실패했습니다.';
+            alert(msg);
+        } catch (err) {
+            console.error('복사 중 오류 발생:', err);
+            alert('복사에 실패했습니다.');
+        }
+
+        window.getSelection().removeAllRanges();
+    }
+
+     // 테이블 내용을 새 탭으로 여는 함수
+    function openTableInNewTab() {
+        const table = document.getElementById('purchaseDataTable');
+        const container = document.getElementById('purchaseDataContainer');
+        const title = container.querySelector('h2').innerText;
+
+        if (!table) {
+            alert('표시할 테이블이 없습니다.');
+            return;
+        }
+
+        const newWindow = window.open('', '_blank');
+        newWindow.document.write(`
+            <!DOCTYPE html>
+            <html lang="ko">
+            <head>
+                <meta charset="UTF-8">
+                <title>${title}</title>
+                <style>
+                    body { font-family: Arial, sans-serif; padding: 20px; }
+                    table { width: 100%; border-collapse: collapse; }
+                    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+                    th { background-color: #f2f2f2; }
+                </style>
+            </head>
+            <body>
+                <h2>${title}</h2>
+                <div style="margin-bottom: 20px;">
+                    <button onclick="window.print()">인쇄하기</button>
+                </div>
+                ${table.outerHTML}
+            </body>
+            </html>
+        `);
+        newWindow.document.close();
+    }
+
+    // 페이지 로드 시 UI 생성
+    window.addEventListener('load', addUI);
+})();
+

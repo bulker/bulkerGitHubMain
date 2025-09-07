@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>폐지줍줍</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            max-width: 600px;
+            margin: auto;
+            line-height: 1.6;
+        }
+        h2 {
+            color: #333;
+        }
+        label {
+            /*display: block;*/
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        textarea {
+            width: 100%;
+            height: 200px;
+            padding: 10px;
+            margin-bottom: 10px;
+            box-sizing: border-box;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            resize: vertical;
+        }
+        input[type="number"] {
+            width: 80px;
+            padding: 5px;
+            margin-bottom: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        button {
+            padding: 10px 15px;
+            background-color: #007BFF;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        #status {
+            margin-top: 20px;
+            padding: 10px;
+            background-color: #f0f0f0;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <h2>폐지줍줍</h2>
+
+    <div>
+        <label for="linkList">링크 목록 (한 줄에 하나씩 입력):</label>
+        <textarea id="linkList" placeholder="예:&#10;https://www.google.com&#10;https://www.naver.com&#10;https://www.daum.net"></textarea>
+    </div>
+
+    <div>
+        <label for="delayMS">링크간 대기 시간 (ms):</label>
+        <input type="number" id="delayMS" value="500" min="100" step="100">
+				<button id="openLinksBtn">링크 모두 열기</button>
+				<a href="https://order.pay.naver.com/home?tabMenu=POINT_TOTAL"> 줍기결과</a>
+    </div>
+
+
+    <div id="status">대기 중...</div>
+
+    <script>
+        document.getElementById('openLinksBtn').addEventListener('click', async () => {
+            const linkListText = document.getElementById('linkList').value;
+            const delayMS = parseFloat(document.getElementById('delayMS').value);
+            const statusDiv = document.getElementById('status');
+
+            const lines = linkListText.split('\n').filter(line => line.trim() !== '');
+            const validLinks = [];
+
+            const urlRegex = /(https?:\/\/[^\s]+)/g;
+            lines.forEach(line => {
+                const matches = line.match(urlRegex);
+                if (matches) {
+                    validLinks.push(...matches);
+                }
+            });
+
+            if (validLinks.length === 0) {
+                statusDiv.innerText = '유효한 링크가 없습니다. 다시 확인해 주세요.';
+                return;
+            }
+
+            const confirmed = window.confirm(`총 ${validLinks.length}개의 링크가 인식되었습니다. 계속 진행하시겠습니까?`);
+            if (!confirmed) {
+                statusDiv.innerText = '링크 열기가 취소되었습니다.';
+                return;
+            }
+
+            document.getElementById('openLinksBtn').disabled = true;
+            
+						statusDiv.innerText = `폐지줍기 시작\n`;
+
+            for (let i = 0; i < validLinks.length; i++) {
+                const url = validLinks[i];
+                statusDiv.innerText += `${i + 1}/${validLinks.length}: ${url}\n`;
+
+                //try {
+                    window.open(url, '_blank');
+                //} catch (e) {
+                //    statusDiv.innerText += ` 실패: ${e.message}\n`;
+                //}
+
+                //if (i < validLinks.length - 1) {
+                   // await new Promise(resolve => setTimeout(resolve, delayMS));
+                //}
+            }
+            
+            statusDiv.innerText += '\n\n모든 링크를 열었습니다.';
+            document.getElementById('openLinksBtn').disabled = false;
+        });
+    </script>
+
+</body>
+</html>

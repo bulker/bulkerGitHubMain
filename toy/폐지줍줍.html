@@ -42,8 +42,15 @@ function on_click1(){
 	document.getElementsByName("preview")[0].innerHTML = "count=" + data.length + "<br/>" + result
 }
 function on_click2(){
+
+
+	on_click1()
+
+
+
+
 	if (data.length < 1) {
-		alert("분석하고 줍기")
+		alert("폐지링크가 없음")
 		return
 	}
 

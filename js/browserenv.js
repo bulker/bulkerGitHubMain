@@ -1,4 +1,5 @@
 //browserenv.js
+console.log('https://raw.githubusercontent.com/bulker/bulkerGitHubMain/master/js/browserenv.js')
 
 //브라우저 환경정보
 
