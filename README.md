@@ -6,3 +6,4 @@ bulker's GitHub Main Repository
 
 # 장난감
 - [폐지줍줍](toy/폐지줍줍.html)
+- [폐지줍줍2](toy/폐지줍줍2.html)
